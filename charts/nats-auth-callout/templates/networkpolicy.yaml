@@ -1,0 +1,48 @@
+{{- if .Values.networkPolicy.enabled }}
+# Egress to the brokers (4222), kube-apiserver for TokenReview (443),
+# and DNS. Service ClusterIPs are not pod-backed, so apiserver and the
+# managed resolver need CIDR allowances — pod selectors cannot cover
+# them.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: nats-auth-callout
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: nats-auth-callout
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.natsPodSelector | nindent 14 }}
+      ports:
+        - port: 4222
+          protocol: TCP
+    - to:
+        {{- range .Values.networkPolicy.apiServerCIDRs }}
+        - ipBlock:
+            cidr: {{ . }}
+        {{- end }}
+      ports:
+        - port: 443
+          protocol: TCP
+    - to:
+        {{- with .Values.networkPolicy.dnsNamespaceSelector }}
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml . | nindent 14 }}
+        {{- end }}
+        {{- range .Values.networkPolicy.dnsCIDRs }}
+        - ipBlock:
+            cidr: {{ . }}
+        {{- end }}
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+{{- end }}

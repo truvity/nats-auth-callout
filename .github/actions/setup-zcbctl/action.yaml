@@ -1,0 +1,92 @@
+# Installs zcbctl and puts it on PATH, so a consuming repository needs no
+# wrapper of its own.
+#
+# Without this, every repo copies a downloader — the same duplication that
+# made bar's private kube-broker-credential worth promoting in the first
+# place. The logic belongs to the repository that publishes the binary.
+#
+#   - uses: truvity/zitadel-ci-broker/.github/actions/setup-zcbctl@<sha> # v0.3.0
+#     with:
+#       version: v0.3.0
+#
+# Pin the SHA and name the version: the SHA pins this action's code, the
+# input names the release it downloads. A tag is mutable, and this action
+# runs on a job holding id-token: write. Pinning the SHA also removes the
+# only other source of a version (github.action_ref carries a tag only
+# when referenced by tag), which is why the input is not optional there.
+#   - run: kubectl get pods          # kubeconfig's exec: zcbctl k8s
+#   - run: aws sts get-caller-identity   # credential_process: zcbctl aws
+#
+# The calling job needs `permissions: id-token: write`: without it the
+# workflow cannot obtain the GitHub OIDC proof the broker exchanges, and
+# zcbctl fails at the first call rather than here.
+name: Setup zcbctl
+description: Install the zitadel-ci-broker client and add it to PATH
+
+inputs:
+  version:
+    description: >-
+      Release tag to install, e.g. v0.2.0. Defaults to the action's own
+      ref when that looks like a tag, so `@v0.2.0` installs v0.2.0 and
+      the two cannot drift.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Install zcbctl
+      shell: bash
+      env:
+        # Passed through env rather than spliced into the script: a `${{ }}`
+        # expression is substituted BEFORE bash parses the line, so an input
+        # containing a quote or $( ) would execute.
+        INPUT_VERSION: ${{ inputs.version }}
+        ACTION_REF: ${{ github.action_ref }}
+      run: |
+        set -euo pipefail
+
+        version="${INPUT_VERSION:-${ACTION_REF}}"
+        if [[ -z "${version}" || "${version}" != v* ]]; then
+          echo "::error::setup-zcbctl: no version. When pinning this action by commit SHA (recommended — it runs on a job with id-token: write), pass version: v0.3.0 explicitly; github.action_ref carries a tag only when the action is referenced by tag." >&2
+          exit 1
+        fi
+
+        # Reject anything that is not a plain tag before it reaches a URL.
+        if [[ ! "${version}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "::error::setup-zcbctl: version must look like v1.2.3, got ${version}" >&2
+          exit 1
+        fi
+
+        case "$(uname -s)" in
+          Linux)  os=linux ;;
+          Darwin) os=darwin ;;
+          *) echo "::error::setup-zcbctl: unsupported OS $(uname -s)" >&2; exit 1 ;;
+        esac
+
+        case "$(uname -m)" in
+          x86_64|amd64)  arch=amd64 ;;
+          arm64|aarch64) arch=arm64 ;;
+          *) echo "::error::setup-zcbctl: unsupported architecture $(uname -m)" >&2; exit 1 ;;
+        esac
+
+        ver="${version#v}"
+        base="https://github.com/truvity/zitadel-ci-broker/releases/download/${version}"
+        archive="zcbctl_${ver}_${os}_${arch}.tar.gz"
+
+        dir="${RUNNER_TEMP}/zcbctl-${version}"
+        mkdir -p "${dir}"
+
+        curl -fsSL --retry 3 -o "${dir}/${archive}" "${base}/${archive}"
+        curl -fsSL --retry 3 -o "${dir}/checksums.txt" "${base}/zitadel-ci-broker_${ver}_checksums.txt"
+
+        # Verify BEFORE extracting. This binary mints credentials, so
+        # "it downloaded" is not the same as "it is what we published",
+        # and an unverified archive is never unpacked at all.
+        ( cd "${dir}" && grep " ${archive}\$" checksums.txt | sha256sum -c - )
+
+        tar -xzf "${dir}/${archive}" -C "${dir}" zcbctl
+        chmod +x "${dir}/zcbctl"
+
+        echo "${dir}" >> "${GITHUB_PATH}"
+        echo "setup-zcbctl: installed ${version} (${os}/${arch})"

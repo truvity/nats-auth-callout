@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["image", "natsURL", "issuerSecret"],
+  "properties": {
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string" },
+        "pullPolicy": { "enum": ["IfNotPresent", "Always", "Never"] }
+      }
+    },
+    "replicas": { "type": "integer", "minimum": 1 },
+    "natsURL": { "type": "string", "pattern": "^nats://" },
+    "issuerSecret": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "key": { "type": "string", "minLength": 1 }
+      }
+    },
+    "projectAccounts": { "type": "array", "items": { "type": "string" } },
+    "tokenAudiences": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "annotations": { "type": "object", "additionalProperties": { "type": "string" } }
+      }
+    },
+    "deploymentAnnotations": { "type": "object", "additionalProperties": { "type": "string" } },
+    "nodeSelector": { "type": "object", "additionalProperties": { "type": "string" } },
+    "tolerations": { "type": "array" },
+    "resources": { "type": "object" },
+    "networkPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "natsPodSelector": { "type": "object", "additionalProperties": { "type": "string" } },
+        "apiServerCIDRs": { "type": "array", "items": { "type": "string" } },
+        "dnsCIDRs": { "type": "array", "items": { "type": "string" } },
+        "dnsNamespaceSelector": { "type": "object", "additionalProperties": { "type": "string" } }
+      }
+    }
+  }
+}

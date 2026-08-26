@@ -1,0 +1,66 @@
+# NATS auth-callout responder: validates connecting clients'
+# ServiceAccount tokens via TokenReview and answers the broker's
+# auth_callout requests with signed user JWTs (namespace → account).
+# Deployed BESIDE the upstream nats/nats chart, never instead of it —
+# see the README for the broker-side auth_callout wiring.
+
+image:
+  repository: ghcr.io/truvity/nats-auth-callout/responder
+  tag: ""  # defaults to appVersion
+  pullPolicy: IfNotPresent
+
+# Post-flip the broker rejects every non-AUTH login while no responder
+# is reachable — run two, they are stateless and answer concurrently.
+replicas: 2
+
+# nats://<broker service>:4222 — cluster-local URL of the NATS the
+# responder serves.
+natsURL: ""
+
+# Secret holding the issuer nkey ACCOUNT seed ("SA…") — the design's
+# one secret: broker login (AUTH account nkey user) + response signing.
+# Provisioned estate-side (ESO/SSM or however you custody seeds).
+issuerSecret:
+  name: nats-auth-callout-issuer
+  key: seed
+
+# Namespaces mapping 1:1 to NATS accounts.
+projectAccounts: []
+
+# SA tokens must be projected with one of these audiences. Include the
+# API server's own audience if long-lived controller-minted tokens
+# must authenticate (their audience is the apiserver URL, not
+# kubernetes.default.svc).
+tokenAudiences: [nats]
+
+serviceAccount:
+  # e.g. eks.amazonaws.com/role-arn for IRSA; TokenReview itself needs
+  # no cloud access — the chart binds system:auth-delegator.
+  annotations: {}
+
+# Extra Deployment annotations (e.g. a GitOps health exemption while
+# the broker and responder resolve their startup order).
+deploymentAnnotations: {}
+
+nodeSelector: {}
+tolerations:
+  - key: arch
+    operator: Exists
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    memory: 64Mi
+
+# Egress-only NetworkPolicy: broker 4222, kube-apiserver 443, DNS 53.
+# The apiserver/DNS reachability is CIDR-shaped (service ClusterIPs are
+# not pod-backed) — supply your cluster's CIDRs or leave disabled.
+networkPolicy:
+  enabled: false
+  natsPodSelector:
+    app.kubernetes.io/name: nats
+  apiServerCIDRs: []
+  dnsCIDRs: []
+  dnsNamespaceSelector: {}

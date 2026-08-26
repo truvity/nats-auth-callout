@@ -1,0 +1,41 @@
+# CI now calls the shared workflow (truvity/ci-workflows), which fans the
+# Justfile recipes out into PARALLEL jobs — one per recipe, each reporting
+# under its own name. Before this they ran serially inside a single
+# `just check` and a red result told you only that something failed.
+#
+# The recipe list mirrors this repo's own `check` recipe, so CI and a
+# laptop still run the same thing; they just no longer run it the same way.
+#
+# Pinned by COMMIT SHA, never by tag or branch: tags move, and every
+# repository in both organizations runs that code.
+name: CI
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  recipes:
+    uses: truvity/ci-workflows/.github/workflows/check.yaml@338f9b0ec48ff3f31048ceea060890d17159e3e5 # v2.11.0
+    with:
+      recipes: '["build","test","lint","chart-lint"]'
+
+  # A stable context name for branch protection. The matrix jobs report as
+  # "recipes / build" and so on, so a required context naming them would
+  # break the moment a recipe is added or renamed.
+  check:
+    needs: recipes
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: '[ "${{ needs.recipes.result }}" = "success" ]'

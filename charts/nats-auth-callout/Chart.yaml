@@ -1,0 +1,5 @@
+apiVersion: v2
+name: nats-auth-callout
+version: 0.0.0-dev  # set by the release workflow
+description: "NATS auth-callout responder — Kubernetes ServiceAccount tokens to NATS accounts"
+appVersion: 0.0.0-dev  # set by the release workflow
