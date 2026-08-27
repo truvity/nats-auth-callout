@@ -15,7 +15,7 @@
       }
     },
     "replicas": { "type": "integer", "minimum": 1 },
-    "natsURL": { "type": "string", "pattern": "^nats://" },
+    "natsURL": { "type": "string", "pattern": "^(nats://.+)?$" },
     "issuerSecret": {
       "type": "object",
       "additionalProperties": false,
