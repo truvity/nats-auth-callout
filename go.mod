@@ -2,6 +2,8 @@ module github.com/truvity/nats-auth-callout
 
 go 1.27.0
 
+toolchain go1.27.1
+
 require (
 	github.com/nats-io/jwt/v2 v2.8.2
 	github.com/nats-io/nats.go v1.53.1
