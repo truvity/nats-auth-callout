@@ -1,0 +1,3 @@
+# At least one audience: with none, no token could ever be accepted.
+natsURL: nats://nats.example.internal:4222
+tokenAudiences: []

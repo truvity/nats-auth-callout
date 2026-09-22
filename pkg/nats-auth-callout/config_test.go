@@ -14,7 +14,7 @@ func setValidEnv(t *testing.T) {
 	t.Setenv(envUser, "auth")
 	t.Setenv(envPassword, "secret")
 	t.Setenv(envIssuerSeed, "SA-fake-seed")
-	t.Setenv(envProjectAccounts, "url-shortener, billing")
+	t.Setenv(envProjectAccounts, "my-namespace, billing")
 	t.Setenv(envTokenAudience, "nats")
 }
 

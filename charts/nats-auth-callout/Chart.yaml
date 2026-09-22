@@ -1,5 +1,20 @@
 apiVersion: v2
 name: nats-auth-callout
-version: 0.0.0-dev  # set by the release workflow
 description: "NATS auth-callout responder — Kubernetes ServiceAccount tokens to NATS accounts"
-appVersion: 0.0.0-dev  # set by the release workflow
+type: application
+# Placeholder: the git tag is the sole version authority. The release
+# workflow stamps both fields from the tag (truvity/ci-workflows
+# release-public.yaml).
+version: 0.0.0
+appVersion: 0.0.0
+home: https://github.com/truvity/nats-auth-callout
+sources:
+  - https://github.com/truvity/nats-auth-callout
+keywords:
+  - nats
+  - auth-callout
+  - kubernetes
+  - serviceaccount
+maintainers:
+  - name: Truvity
+    url: https://github.com/truvity

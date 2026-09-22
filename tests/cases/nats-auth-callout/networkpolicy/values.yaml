@@ -1,0 +1,15 @@
+# The egress policy on, with the CIDR-shaped allowances the apiserver
+# and the managed resolver need (their ClusterIPs are not pod-backed)
+# and both selector forms.
+natsURL: nats://nats.example.internal:4222
+networkPolicy:
+  enabled: true
+  natsPodSelector:
+    app.kubernetes.io/name: nats
+  apiServerCIDRs:
+    - 10.0.0.0/24
+    - 10.0.2.0/24
+  dnsCIDRs:
+    - 10.0.1.10/32
+  dnsNamespaceSelector:
+    kubernetes.io/metadata.name: kube-system

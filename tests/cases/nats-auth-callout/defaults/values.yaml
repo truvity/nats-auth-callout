@@ -1,0 +1,3 @@
+# The chart's defaults plus the one value it refuses to render without:
+# the broker URL has no neutral default a stranger's cluster could share.
+natsURL: nats://nats.example.internal:4222

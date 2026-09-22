@@ -1,0 +1,3 @@
+# Strict at the top level: a typo must fail the render, not be ignored.
+natsURL: nats://nats.example.internal:4222
+replicaCount: 2

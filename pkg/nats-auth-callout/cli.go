@@ -45,7 +45,7 @@ Environment:
                           the issuer seed re-encoded as a USER key; list its
                           "U..." public form in auth_callout.auth_users
   NATS_PROJECT_ACCOUNTS   comma-separated namespaces mapped 1:1 to NATS
-                          accounts (e.g. "url-shortener,billing")
+                          accounts (e.g. "my-namespace,billing")
   NATS_TOKEN_AUDIENCE     comma-separated TokenReview audiences (required;
                           client SA tokens must be projected with one of
                           these audiences)

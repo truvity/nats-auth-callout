@@ -1,0 +1,2 @@
+natsURL: nats://nats.example.internal:4222
+projectAccounts: alpha

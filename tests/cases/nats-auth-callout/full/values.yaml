@@ -1,0 +1,46 @@
+# Every value set to a neutral non-default, so the golden shows each
+# knob reaching the render.
+image:
+  repository: registry.example.internal/nats-auth-callout/responder
+  tag: 1.2.3
+  pullPolicy: Always
+replicas: 3
+natsURL: nats://nats.example.internal:4222
+issuerSecret:
+  name: example-issuer
+  key: nkey-seed
+projectAccounts:
+  - alpha
+  - beta
+tokenAudiences:
+  - nats
+  - https://kubernetes.example.internal
+serviceAccount:
+  annotations:
+    example.com/role: responder
+deploymentAnnotations:
+  example.com/health: exempt
+nodeSelector:
+  kubernetes.io/arch: arm64
+tolerations:
+  - key: example.com/dedicated
+    operator: Equal
+    value: messaging
+    effect: NoSchedule
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 128Mi
+networkPolicy:
+  enabled: true
+  natsPodSelector:
+    app.kubernetes.io/name: nats
+    app.kubernetes.io/instance: example
+  apiServerCIDRs:
+    - 10.0.0.0/24
+  dnsCIDRs:
+    - 10.0.1.10/32
+  dnsNamespaceSelector:
+    kubernetes.io/metadata.name: kube-system

@@ -1,0 +1,3 @@
+# Zero responders means every non-AUTH login is rejected once the broker flips.
+natsURL: nats://nats.example.internal:4222
+replicas: 0

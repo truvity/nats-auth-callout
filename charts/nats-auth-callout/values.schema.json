@@ -1,9 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "nats-auth-callout chart values",
+  "description": "Strict at the top level and inside every object the chart defines: unknown keys are rejected so a typo fails the render instead of being silently ignored. Kubernetes passthrough fields (resources, tolerations, selectors) stay open.",
   "type": "object",
   "additionalProperties": false,
   "required": ["image", "natsURL", "issuerSecret"],
   "properties": {
+    "global": { "type": "object" },
     "image": {
       "type": "object",
       "additionalProperties": false,

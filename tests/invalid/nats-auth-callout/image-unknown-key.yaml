@@ -1,0 +1,4 @@
+# Strict inside the objects the chart defines, not only at the top.
+natsURL: nats://nats.example.internal:4222
+image:
+  version: "1.2.3"

@@ -13,7 +13,7 @@ on one broker, no NATS credentials to distribute.
 | `NATS_URL`                              | no       | NATS server URL (default `nats://127.0.0.1:4222`)                                        |
 | `NATS_AUTH_USER` / `NATS_AUTH_PASSWORD` | no       | optional user/password override for the service's own broker login (set both or neither) |
 | `NATS_ISSUER_SEED`                      | yes      | account nkey seed (`SA...`) signing responses; must match `auth_callout.issuer`          |
-| `NATS_PROJECT_ACCOUNTS`                 | no       | comma-separated namespaces mapped 1:1 to accounts (e.g. `url-shortener,billing`)         |
+| `NATS_PROJECT_ACCOUNTS`                 | no       | comma-separated namespaces mapped 1:1 to accounts (e.g. `my-namespace,billing`)         |
 | `NATS_TOKEN_AUDIENCE`                   | yes      | comma-separated TokenReview audiences the SA tokens must carry                           |
 | `NATS_HEALTH_ADDR`                      | no       | `/healthz` + `/readyz` listen address (default `:8080`)                                  |
 
