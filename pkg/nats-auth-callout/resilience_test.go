@@ -61,7 +61,7 @@ func withToken(token string) func(*jwt.AuthorizationRequestClaims) {
 
 func TestReviewRetriesTransientFailure(t *testing.T) {
 	seq := &seqReviewer{responses: []func() (*authv1.TokenReviewStatus, error){
-		func() (*authv1.TokenReviewStatus, error) { return errReview() },
+		errReview,
 		okReview("system:serviceaccount:url-shortener:nack"),
 	}}
 	env := resilienceEnv(t, seq)
@@ -78,7 +78,7 @@ func TestReviewRetriesTransientFailure(t *testing.T) {
 
 func TestReviewRetryExhaustionDenies(t *testing.T) {
 	seq := &seqReviewer{responses: []func() (*authv1.TokenReviewStatus, error){
-		func() (*authv1.TokenReviewStatus, error) { return errReview() },
+		errReview,
 	}}
 	env := resilienceEnv(t, seq)
 
@@ -113,7 +113,7 @@ func TestReviewCacheSkipsSecondReview(t *testing.T) {
 func TestReviewCacheRidesReviewOutage(t *testing.T) {
 	seq := &seqReviewer{responses: []func() (*authv1.TokenReviewStatus, error){
 		okReview("system:serviceaccount:url-shortener:nack"),
-		func() (*authv1.TokenReviewStatus, error) { return errReview() },
+		errReview,
 	}}
 	env := resilienceEnv(t, seq)
 
@@ -196,7 +196,7 @@ func TestHealthReadyzFailsWhenReviewFails(t *testing.T) {
 	}
 
 	reviewer := &seqReviewer{responses: []func() (*authv1.TokenReviewStatus, error){
-		func() (*authv1.TokenReviewStatus, error) { return errReview() },
+		errReview,
 	}}
 
 	health := NewHealthServer(reviewer, nil, []string{"nats"}, slog.New(slog.DiscardHandler))
