@@ -1,62 +1,204 @@
 # nats-auth-callout
 
-NATS auth-callout responder for Kubernetes: connecting clients present
-their **ServiceAccount token**; the responder validates it via
-TokenReview and answers the broker's `auth_callout` request with a
-signed user JWT mapping the namespace to a NATS account. Workload
-identity for NATS — no per-client credentials, no shared passwords.
+Workload identity for NATS on Kubernetes: an auth-callout responder
+that validates a connecting client's ServiceAccount token via
+TokenReview and answers the broker with a signed user JWT that places
+the client into the NATS account named after its namespace. No
+per-client credentials, no shared passwords.
 
-## How it fits
+| Artifact | What | Status |
+| --- | --- | --- |
+| `charts/nats-auth-callout` | the responder as a Deployment beside a broker the estate runs, with its ServiceAccount, the `system:auth-delegator` binding and an optional egress NetworkPolicy | shipped |
+| `ghcr.io/truvity/nats-auth-callout/responder` | the responder image: a static binary on a distroless non-root base, `linux/amd64` and `linux/arm64` | shipped |
+| `github.com/truvity/nats-auth-callout` | the Go module (`pkg/nats-auth-callout`), and the same binary attached to each release for Linux and macOS | shipped |
 
-Deploy this chart **beside** the upstream
-[`nats/nats`](https://github.com/nats-io/k8s) chart, never instead of
-it. The broker's `auth_callout` block names the issuer account and the
-AUTH user (this responder's nkey); until that block is rendered the
-responder idles harmlessly, so deploy order is free.
+The chart publishes to `oci://ghcr.io/truvity/charts/nats-auth-callout`
+on every tag, at the same version as the image.
 
-The one secret is the issuer nkey ACCOUNT seed (`SA…`): broker login +
-response signing. Provision it however you custody seeds (ESO, sealed
-secrets, …) and point `issuerSecret` at it.
+## Who it is for
 
-## Deploying with OpenBAO (or Vault) and External Secrets
+A platform team that runs one NATS broker for several tenants on
+Kubernetes, tenant per namespace, and wants NATS access to follow the
+identity Kubernetes already issues rather than credentials it would
+have to mint and distribute. It assumes a broker whose configuration
+the estate renders (normally the upstream
+[`nats/nats`](https://github.com/nats-io/k8s) chart), projected
+ServiceAccount tokens on the clients, and a Secret the estate creates
+for the one seed. It does not install the broker, does not write the
+broker's `accounts` or `auth_callout` block, and does not put the seed
+anywhere: it takes the name of a Secret. No cloud identity is involved;
+TokenReview needs only the built-in `system:auth-delegator` grant.
 
-The recommended shape: the seed lives at one KV v2 path (key `seed`),
-minted by automation and never copied out; an ESO `ClusterSecretStore`
-(provider `vault` — OpenBAO speaks the same API) with a read-only role
-for that one path; an `ExternalSecret` in the responder's namespace
-that produces the Secret `issuerSecret` names. Then the order that
-keeps the flip safe: seed → KV → store/role → ExternalSecret → this
-chart → **only then** the broker's `accounts` + `auth_callout` block.
-Flip before any stream holds data, and exempt the responder from any
-health-ordered wave gate: it is not `Ready` until the broker accepts
-its login. Manifests, key derivation, rotation and a troubleshooting
-table: [docs/openbao-external-secrets.md](docs/openbao-external-secrets.md).
+## The model
 
-## Install
+Three nouns. The **broker** delegates authentication (config-mode
+`auth_callout`) to an `AUTH` account whose one user is this responder.
+The **responder** takes each callout request, reviews the client's
+ServiceAccount token with the API server, maps the token's namespace to
+the account of the same name, and signs a user JWT for that account.
+The **seed**, one nkey account seed (`SA…`), is the responder's only
+secret: it signs the responses, and re-encoded as a user key it is also
+the responder's own login. Its two public keys, `A…` and `U…`, go into
+the broker's configuration.
 
-```sh
-helm install nats-auth-callout \
-  oci://ghcr.io/truvity/charts/nats-auth-callout \
-  --namespace nats \
-  --set natsURL=nats://nats.nats.svc:4222 \
-  --set 'projectAccounts[0]=my-namespace'
+```
+client pod (namespace my-namespace)
+  │  CONNECT auth_token = projected ServiceAccount token (audience nats)
+  ▼
+NATS broker ── $SYS.REQ.USER.AUTH ──► responder (this chart)
+  ▲                                     │ TokenReview ──► API server
+  │                                     │ system:serviceaccount:my-namespace:<name>
+  └── signed user JWT, account my-namespace ◄──┘
 ```
 
-RBAC: the chart binds `system:auth-delegator` to its ServiceAccount —
-that is all TokenReview needs; no cloud access is involved.
+Deploy the chart **beside** the broker, never instead of it. Until the
+broker's `auth_callout` block is rendered the responder idles (it is
+not `Ready`, because the broker refuses its login), so the order is
+free to be the safe one: responder first, broker flip last.
 
-`tokenAudiences`: SA tokens must be projected with one of these
-audiences. Include your API server's own audience if long-lived
-controller-minted token Secrets must authenticate — those carry the
-apiserver URL as audience, not `kubernetes.default.svc`.
+## Install and a worked example
 
-`/readyz` exercises the real dependency chain (auth subscription +
-broker connection + a live TokenReview of the pod's own token), so a
-responder that cannot authorize clients goes unready instead of
-denying everything while looking Running.
+```sh
+helm install nats-auth-callout oci://ghcr.io/truvity/charts/nats-auth-callout \
+  --version <version> --namespace nats \
+  --values values.yaml
+```
 
-## Releases
+```yaml
+# values.yaml — every value is a placeholder
+natsURL: nats://nats.nats.svc:4222      # the broker's client Service
+issuerSecret:
+  name: nats-auth-callout-issuer        # key `seed`, created by the estate
+projectAccounts:
+  - my-namespace                        # one NATS account per namespace
+tokenAudiences:
+  - nats                                # what the clients' tokens are projected with
+  - https://kubernetes.default.svc      # the API server's own audience: /readyz reviews the pod's own token
+```
 
-One `v*` tag releases the image
-(`ghcr.io/truvity/nats-auth-callout/responder`) and the chart
-(`ghcr.io/truvity/charts/nats-auth-callout`) at the same version.
+The seed Secret comes from wherever the estate keeps secrets (External
+Secrets, SOPS, or `kubectl create secret generic nats-auth-callout-issuer
+--from-literal seed=SA…`); `nk -gen account` mints one, and
+[docs/openbao-external-secrets.md](docs/openbao-external-secrets.md)
+derives its two public keys. Then the broker, last, in the upstream
+chart's `config.merge`:
+
+```yaml
+config:
+  merge:
+    accounts:
+      AUTH:
+        users:
+          - nkey: U…                    # the responder's login
+      my-namespace: {}                  # one per projectAccounts entry
+    authorization:
+      auth_callout:
+        issuer: A…
+        auth_users: [U…]
+        account: AUTH
+```
+
+A client projects its token with the audience and presents it as the
+NATS token:
+
+```yaml
+volumes:
+  - name: nats-token
+    projected:
+      sources:
+        - serviceAccountToken:
+            audience: nats
+            expirationSeconds: 3600
+            path: token
+```
+
+`tokenAudiences` is the contract: a token projected with any other
+audience is denied. It must also carry the API server's own audience,
+because `/readyz` reviews the pod's own token and the kubelet projects
+that one with the API server's audience alone; the same entry is what
+lets long-lived controller-minted token Secrets authenticate, and those
+carry the API server URL as their audience, not `kubernetes.default.svc`
+(see [docs/reference.md](docs/reference.md#audiences)).
+
+`/readyz` exercises the real dependency chain (the confirmed auth
+subscription, the broker connection, and a live TokenReview of the pod's
+own token), so a responder that cannot authorize clients goes unready
+instead of denying everything while looking `Running`.
+[docs/reference.md](docs/reference.md) has every value and every
+environment variable.
+
+## Documentation
+
+- [docs/adoption.md](docs/adoption.md): prerequisites, the install
+  order that keeps the broker flip safe, the zero-diff gate, adopting
+  a responder that already runs, and upgrading
+- [docs/safety.md](docs/safety.md): every render-time and start-up
+  refusal and the failure it prevents; the traps, starting with the
+  adoption order
+- [docs/reference.md](docs/reference.md): every chart value, every
+  environment variable, the mapping rule, audiences and the health
+  endpoints
+- [docs/doctrine.md](docs/doctrine.md): what this repository owns and
+  what the consuming estate owns, and why it is shaped this way
+- [docs/openbao-external-secrets.md](docs/openbao-external-secrets.md):
+  the seed in OpenBAO (or Vault) delivered by External Secrets: minting,
+  manifests, rotation and a troubleshooting table
+- [CHANGELOG.md](CHANGELOG.md): what changed for a consumer, per version
+
+## The rule that makes this repository public
+
+**Mechanism only.** Nothing here names a cluster, a broker, a namespace
+of the consuming estate or a secret path. Every such thing is an input
+with a neutral default, and the consuming estate supplies it from its
+own (private) repository. `hack/leak-canary.sh` enforces this in CI, and
+public history cannot be unpublished — so the rule is mechanical, not
+remembered.
+
+This repository follows the shared
+[component contract](https://github.com/truvity/ci-workflows/blob/master/docs/component-contract.md).
+
+## Status
+
+Used in production by its maintainers. Releases are listed on the
+[releases page](https://github.com/truvity/nats-auth-callout/releases),
+and [CHANGELOG.md](CHANGELOG.md) says what changed for a consumer in
+each.
+
+## Development
+
+```sh
+devbox shell        # or direnv
+just check          # build + lint + golden renders and go test + leak canary + govulncheck
+just golden         # regenerate tests/golden after a template change — review the diff
+just race           # the tests under the race detector; needs a C toolchain, so not in check
+```
+
+CI runs each recipe as its own job; `race` is its own job because
+everything else builds with cgo off, and `vuln` runs daily. Every
+`tests/cases/nats-auth-callout/<case>/values.yaml` is rendered and
+compared byte-for-byte with `tests/golden/nats-auth-callout/<case>.yaml`;
+a template change is reviewed as a diff, with no cluster involved.
+
+`tests/invalid/nats-auth-callout/` holds one fixture per refusal. Each
+must fail to render; `just check` proves it. A rule without a fixture is
+a rule that will quietly stop working.
+
+## Releasing
+
+Push a tag `vX.Y.Z`. The shared release workflow creates the GitHub
+Release with the binaries, pushes the image at that version and pushes
+the chart at that version — a chart's own `version` and `appVersion`
+are placeholders that never move — and the same tag is the Go module's
+version.
+
+Auto-release is **armed** (`vars.AUTO_RELEASE` is `true`), and it cuts
+**patches only**: at once for a merged `security`-labelled pull request,
+weekly when the default branch has moved past the latest tag. It asks
+only whether the branch moved, not what moved it, so a feature merged
+and left untagged ships in the next weekly patch. Minors and majors are
+always manual, tagged when the change merges and after its CHANGELOG
+heading.
+
+## Licence
+
+MIT — see [LICENSE](LICENSE).
