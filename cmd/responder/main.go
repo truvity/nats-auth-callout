@@ -1,3 +1,5 @@
+// Package main is the responder binary: it wires the flags and the
+// environment into the natsauthcallout package and runs it.
 package main
 
 import (

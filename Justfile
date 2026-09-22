@@ -16,8 +16,10 @@ test:
     go test ./... -coverprofile=coverage.out
 
 
-# Run linters
+# Run linters. `config verify` first: the v2 schema silently accepts a
+# stale top-level `linters-settings:` block, and only verify rejects it.
 lint:
+    golangci-lint config verify
     golangci-lint run ./...
 
 # Run Go vulnerability check
@@ -43,7 +45,24 @@ chart-lint:
         --set natsURL=nats://nats.nats.svc:4222 >/dev/null
     ! helm template nats-auth-callout charts/nats-auth-callout --set bogusKey=1 >/dev/null 2>&1
 
-check: build test lint chart-lint vuln
+# The reason this repository can be public. Runs in CI as its own job.
+leak-canary:
+    hack/leak-canary.sh
+
+# Run the tests under the race detector. The responder answers callout
+# requests concurrently and shares the broker connection between them, so a
+# data race there would be a wrong answer rather than a crash, and would not
+# show up in an ordinary run.
+#
+# This is not part of `check`, and deliberately. Everything else here builds
+# with cgo off, which is what makes the binary static and the image small;
+# the race detector is the one thing that needs a C toolchain. Putting it in
+# the gate would mean every contributor needs one to run the gate at all. CI
+# runs this as its own job, where the toolchain is the runner's own.
+race:
+    CGO_ENABLED=1 go test -race ./...
+
+check: build test lint chart-lint leak-canary vuln
 
 # Build a snapshot release locally (no push, no tag)
 snapshot:
