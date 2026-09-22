@@ -18,6 +18,20 @@ The one secret is the issuer nkey ACCOUNT seed (`SA…`): broker login +
 response signing. Provision it however you custody seeds (ESO, sealed
 secrets, …) and point `issuerSecret` at it.
 
+## Deploying with OpenBAO (or Vault) and External Secrets
+
+The recommended shape: the seed lives at one KV v2 path (key `seed`),
+minted by automation and never copied out; an ESO `ClusterSecretStore`
+(provider `vault` — OpenBAO speaks the same API) with a read-only role
+for that one path; an `ExternalSecret` in the responder's namespace
+that produces the Secret `issuerSecret` names. Then the order that
+keeps the flip safe: seed → KV → store/role → ExternalSecret → this
+chart → **only then** the broker's `accounts` + `auth_callout` block.
+Flip before any stream holds data, and exempt the responder from any
+health-ordered wave gate: it is not `Ready` until the broker accepts
+its login. Manifests, key derivation, rotation and a troubleshooting
+table: [docs/openbao-external-secrets.md](docs/openbao-external-secrets.md).
+
 ## Install
 
 ```sh
