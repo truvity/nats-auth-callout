@@ -84,7 +84,7 @@ func newTestEnv(t *testing.T, reviewer *fakeReviewer) *testEnv {
 	}
 
 	cfg := &Config{
-		ProjectAccounts: map[string]struct{}{"url-shortener": {}, "billing": {}},
+		ProjectAccounts: map[string]struct{}{"my-namespace": {}, "billing": {}},
 		Audiences:       []string{"nats"},
 	}
 
@@ -150,7 +150,7 @@ func saToken(exp time.Time) string {
 }
 
 func TestHandleAllowsMappedProject(t *testing.T) {
-	reviewer := &fakeReviewer{status: authenticatedAs("system:serviceaccount:url-shortener:worker")}
+	reviewer := &fakeReviewer{status: authenticatedAs("system:serviceaccount:my-namespace:worker")}
 	env := newTestEnv(t, reviewer)
 
 	token := saToken(env.now.Add(30 * time.Minute))
@@ -186,12 +186,12 @@ func TestHandleAllowsMappedProject(t *testing.T) {
 		t.Errorf("user jwt subject = %q, want %q", uc.Subject, env.userPub)
 	}
 
-	if uc.Audience != "url-shortener" {
-		t.Errorf("user jwt audience = %q, want url-shortener", uc.Audience)
+	if uc.Audience != "my-namespace" {
+		t.Errorf("user jwt audience = %q, want my-namespace", uc.Audience)
 	}
 
-	if uc.Name != "url-shortener/worker" {
-		t.Errorf("user jwt name = %q, want url-shortener/worker", uc.Name)
+	if uc.Name != "my-namespace/worker" {
+		t.Errorf("user jwt name = %q, want my-namespace/worker", uc.Name)
 	}
 
 	if want := env.now.Add(30 * time.Minute).Unix(); uc.Expires != want {
@@ -204,7 +204,7 @@ func TestHandleAllowsMappedProject(t *testing.T) {
 }
 
 func TestHandleBoundsTokenReview(t *testing.T) {
-	reviewer := &fakeReviewer{status: authenticatedAs("system:serviceaccount:url-shortener:worker")}
+	reviewer := &fakeReviewer{status: authenticatedAs("system:serviceaccount:my-namespace:worker")}
 	env := newTestEnv(t, reviewer)
 
 	before := time.Now()
@@ -243,7 +243,7 @@ func TestHandleFallsBackToPassword(t *testing.T) {
 }
 
 func TestHandleCapsExpiryAtOneHour(t *testing.T) {
-	reviewer := &fakeReviewer{status: authenticatedAs("system:serviceaccount:emp-otsar:shell")}
+	reviewer := &fakeReviewer{status: authenticatedAs("system:serviceaccount:emp-example:shell")}
 	env := newTestEnv(t, reviewer)
 
 	payload := env.authRequest(t, func(req *jwt.AuthorizationRequestClaims) {
@@ -261,8 +261,8 @@ func TestHandleCapsExpiryAtOneHour(t *testing.T) {
 		t.Fatalf("decode embedded user jwt: %v", err)
 	}
 
-	if uc.Audience != "emp-otsar" {
-		t.Errorf("user jwt audience = %q, want emp-otsar", uc.Audience)
+	if uc.Audience != "emp-example" {
+		t.Errorf("user jwt audience = %q, want emp-example", uc.Audience)
 	}
 
 	if want := env.now.Add(time.Hour).Unix(); uc.Expires != want {

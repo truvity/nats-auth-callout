@@ -1,0 +1,2 @@
+# Only nats:// is accepted; TLS is the broker's to negotiate, not the URL's.
+natsURL: tls://nats.example.internal:4222

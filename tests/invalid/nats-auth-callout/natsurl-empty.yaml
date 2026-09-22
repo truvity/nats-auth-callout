@@ -1,0 +1,3 @@
+# The render-time refusal: the broker URL has no default and the
+# template requires it, so the chart's own defaults do not render.
+{}

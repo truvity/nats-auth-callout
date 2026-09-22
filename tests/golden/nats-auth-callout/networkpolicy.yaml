@@ -1,0 +1,150 @@
+---
+# Source: nats-auth-callout/templates/networkpolicy.yaml
+# Egress to the brokers (4222), kube-apiserver for TokenReview (443),
+# and DNS. Service ClusterIPs are not pod-backed, so apiserver and the
+# managed resolver need CIDR allowances — pod selectors cannot cover
+# them.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: nats-auth-callout
+  namespace: nats-system
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: nats-auth-callout
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: nats
+      ports:
+        - port: 4222
+          protocol: TCP
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/24
+        - ipBlock:
+            cidr: 10.0.2.0/24
+      ports:
+        - port: 443
+          protocol: TCP
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+        - ipBlock:
+            cidr: 10.0.1.10/32
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+
+---
+# Source: nats-auth-callout/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nats-auth-callout
+  namespace: nats-system
+  labels:
+    app.kubernetes.io/name: nats-auth-callout
+
+---
+# Source: nats-auth-callout/templates/serviceaccount.yaml
+# TokenReview needs the auth-delegator grant (webhook-authenticator
+# pattern: the built-in system:auth-delegator ClusterRole).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: nats-auth-callout-auth-delegator-nats-system
+  labels:
+    app.kubernetes.io/name: nats-auth-callout
+subjects:
+  - kind: ServiceAccount
+    name: nats-auth-callout
+    namespace: nats-system
+roleRef:
+  kind: ClusterRole
+  name: system:auth-delegator
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# Source: nats-auth-callout/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nats-auth-callout
+  namespace: nats-system
+  labels:
+    app.kubernetes.io/name: nats-auth-callout
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nats-auth-callout
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nats-auth-callout
+    spec:
+      serviceAccountName: nats-auth-callout
+      tolerations:
+        - key: arch
+          operator: Exists
+      containers:
+        - name: responder
+          image: ghcr.io/truvity/nats-auth-callout/responder:0.0.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: NATS_URL
+              value: "nats://nats.example.internal:4222"
+            - name: NATS_ISSUER_SEED
+              valueFrom:
+                secretKeyRef:
+                  name: nats-auth-callout-issuer
+                  key: seed
+            - name: NATS_PROJECT_ACCOUNTS
+              value: ""
+            - name: NATS_TOKEN_AUDIENCE
+              value: "nats"
+          ports:
+            - name: health
+              containerPort: 8080
+              protocol: TCP
+          # /readyz exercises the REAL dependency chain: confirmed auth
+          # subscription + broker connection + a live TokenReview of
+          # the pod's own SA token. A callout that cannot authorize
+          # clients goes unready instead of denying everything while
+          # looking Running.
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            limits:
+              memory: 64Mi
+            requests:
+              cpu: 10m
+              memory: 32Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65534
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault

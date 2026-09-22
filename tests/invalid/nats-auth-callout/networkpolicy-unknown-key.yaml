@@ -1,0 +1,4 @@
+natsURL: nats://nats.example.internal:4222
+networkPolicy:
+  enabled: true
+  ingress: []
