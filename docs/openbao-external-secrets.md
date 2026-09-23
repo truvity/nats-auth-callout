@@ -196,7 +196,7 @@ failure exits and the kubelet restarts it; once connected it reconnects
 indefinitely — and it goes `Ready` the moment the broker resolves.
 `/readyz` gates on the confirmed auth subscription, the broker
 connection and a live TokenReview of the pod's own token (see
-[Resilience](../pkg/nats-auth-callout/README.md#resilience-inf-401-incident-hardening)),
+[Resilience](../pkg/nats-auth-callout/README.md#resilience)),
 which is exactly what makes it a correct signal and an awkward one for
 a health gate: if your deploy tool orders waves by health, **exempt the
 responder from that gate** (`deploymentAnnotations` in `values.yaml`

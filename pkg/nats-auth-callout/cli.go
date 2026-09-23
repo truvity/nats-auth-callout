@@ -30,7 +30,7 @@ const (
 	// redactedInvalid is logged in place of a NATS URL we cannot parse.
 	redactedInvalid = "invalid"
 
-	usage = `nats-auth-callout — NATS auth-callout responder (INF-387)
+	usage = `nats-auth-callout — NATS auth-callout responder
 
 Validates connecting clients' Kubernetes ServiceAccount tokens via
 TokenReview and places them into the right NATS account (per-project
@@ -50,11 +50,13 @@ Environment:
                           client SA tokens must be projected with one of
                           these audiences)
   NATS_HEALTH_ADDR        /healthz + /readyz listen address (default :8080;
-                          /readyz performs a real self-TokenReview)
+                          /readyz performs a real TokenReview of the pod's
+                          own token, with no audience list)
 
 Mapping rule (v2, uniform): every tenant namespace maps to a DEDICATED
-account of the same name — listed project namespaces, employee-{slug},
-and ci; anything else is rejected.
+account of the same name — listed project namespaces, emp-<slug>,
+ci-<org>-<repo> (both parts non-empty), and the legacy ci; anything
+else is rejected.
 `
 )
 
@@ -130,11 +132,12 @@ func Run(args []string, version, gitCommit string) int {
 
 	// Health endpoints: /healthz is live from here on (slow startups stay
 	// visible to the kubelet); /readyz additionally gates on the confirmed
-	// auth subscription, the broker connection, and a real self-TokenReview
-	// — a pod that cannot authorize clients must never look ready. A
+	// auth subscription, the broker connection, and a real TokenReview of
+	// the pod's own token — a pod that cannot authorize clients must never
+	// look ready. A
 	// listener failure is FATAL: running without probes would silently
 	// disable exactly the safety net the probes exist for.
-	health := NewHealthServer(reviewer, nc, cfg.Audiences, logger)
+	health := NewHealthServer(reviewer, nc, logger)
 
 	go func() {
 		if serveErr := health.Serve(ctx, cfg.HealthAddr); serveErr != nil {

@@ -31,14 +31,13 @@ type (
 	// (readiness: NATS connected AND a real TokenReview of the pod's own
 	// ServiceAccount token succeeds). A callout pod that cannot reach the
 	// TokenReview API answers every client with "token review unavailable"
-	// while looking perfectly Running — the INF-401 incident class. The
-	// readiness probe turns that state into an unready pod: it drops from
-	// the queue group's competition and rollouts halt with old pods serving.
+	// while looking perfectly Running. The readiness probe turns that
+	// state into an unready pod: it drops from the queue group's
+	// competition and rollouts halt with old pods serving.
 	HealthServer struct {
-		reviewer  TokenReviewer
-		nc        *nats.Conn
-		audiences []string
-		logger    *slog.Logger
+		reviewer TokenReviewer
+		nc       *nats.Conn
+		logger   *slog.Logger
 
 		// tokenPath is selfTokenPath in production; injectable for tests.
 		tokenPath string
@@ -57,12 +56,13 @@ type (
 	}
 )
 
-// NewHealthServer wires the readiness dependencies.
-func NewHealthServer(reviewer TokenReviewer, nc *nats.Conn, audiences []string, logger *slog.Logger) *HealthServer {
+// NewHealthServer wires the readiness dependencies. The self-review
+// takes no audience list (see selfReview), so the configured client
+// audiences are not among them.
+func NewHealthServer(reviewer TokenReviewer, nc *nats.Conn, logger *slog.Logger) *HealthServer {
 	return &HealthServer{
 		reviewer:  reviewer,
 		nc:        nc,
-		audiences: audiences,
 		logger:    logger,
 		tokenPath: selfTokenPath,
 		now:       time.Now,
@@ -153,10 +153,15 @@ func (h *HealthServer) selfReview(ctx context.Context) error {
 	reviewCtx, cancel := context.WithTimeout(ctx, readyReviewTimeout)
 	defer cancel()
 
-	// The pod's own token carries the apiserver's default audience, which
-	// NATS_TOKEN_AUDIENCE includes; a nil audience list would also work but
-	// using the configured set exercises the production code path.
-	status, err := h.reviewer.Review(reviewCtx, string(token), h.audiences)
+	// No audience list, deliberately. The kubelet projects the pod's own
+	// token with the API server's audience and no other, and TokenReview
+	// accepts a token only for an audience it was projected with. An
+	// omitted list makes the API server check the token against its own
+	// audiences, which is exactly how that token was issued, so readiness
+	// does not depend on NATS_TOKEN_AUDIENCE also naming the API server.
+	// Clients are never reviewed this way: Handler submits every client
+	// token against the configured audiences, and only those.
+	status, err := h.reviewer.Review(reviewCtx, string(token), nil)
 	if err != nil {
 		return fmt.Errorf("self tokenreview: %w", err)
 	}

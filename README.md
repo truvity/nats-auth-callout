@@ -73,7 +73,7 @@ projectAccounts:
   - my-namespace                        # one NATS account per namespace
 tokenAudiences:
   - nats                                # what the clients' tokens are projected with
-  - https://kubernetes.default.svc      # the API server's own audience: /readyz reviews the pod's own token
+  - https://kubernetes.default.svc      # the API server's own audience: only for controller-minted token Secrets
 ```
 
 The seed Secret comes from wherever the estate keeps secrets (External
@@ -113,17 +113,19 @@ volumes:
 ```
 
 `tokenAudiences` is the contract: a token projected with any other
-audience is denied. It must also carry the API server's own audience,
-because `/readyz` reviews the pod's own token and the kubelet projects
-that one with the API server's audience alone; the same entry is what
-lets long-lived controller-minted token Secrets authenticate, and those
-carry the API server URL as their audience, not `kubernetes.default.svc`
-(see [docs/reference.md](docs/reference.md#audiences)).
+audience is denied. The API server's own audience belongs in the list
+only when long-lived controller-minted token Secrets must authenticate
+(a JetStream controller's, for instance): those carry the API server's
+URL as their audience, which is not always `kubernetes.default.svc` (see
+[docs/reference.md](docs/reference.md#audiences)). Readiness does not
+need it.
 
 `/readyz` exercises the real dependency chain (the confirmed auth
 subscription, the broker connection, and a live TokenReview of the pod's
 own token), so a responder that cannot authorize clients goes unready
-instead of denying everything while looking `Running`.
+instead of denying everything while looking `Running`. The self-review
+asks for no audience, so the pod's token is accepted as the kubelet
+issued it; the clients' audiences stay the clients' contract.
 [docs/reference.md](docs/reference.md) has every value and every
 environment variable.
 
