@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -157,7 +158,7 @@ func TestHealthReadyz(t *testing.T) {
 	}}
 
 	// nc == nil skips the broker-status gate (unit scope).
-	health := NewHealthServer(reviewer, nil, []string{"nats"}, slog.New(slog.DiscardHandler))
+	health := NewHealthServer(reviewer, nil, slog.New(slog.DiscardHandler))
 	health.tokenPath = tokenFile
 
 	// Before the subscription is confirmed, readiness must refuse.
@@ -199,7 +200,7 @@ func TestHealthReadyzFailsWhenReviewFails(t *testing.T) {
 		errReview,
 	}}
 
-	health := NewHealthServer(reviewer, nil, []string{"nats"}, slog.New(slog.DiscardHandler))
+	health := NewHealthServer(reviewer, nil, slog.New(slog.DiscardHandler))
 	health.tokenPath = tokenFile
 	health.MarkSubscribed()
 
@@ -208,6 +209,67 @@ func TestHealthReadyzFailsWhenReviewFails(t *testing.T) {
 
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("/readyz = %d, want 503 when TokenReview is down", rec.Code)
+	}
+}
+
+// The kubelet projects the pod's own token with the API server's audience
+// alone, so the self-review must not ask for the client audiences: an
+// omitted list is what lets TokenReview accept that token as issued.
+func TestHealthReadyzReviewsOwnTokenWithoutAudiences(t *testing.T) {
+	tokenFile := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(tokenFile, []byte("self-token"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	reviewer := &fakeReviewer{status: authenticatedAs("system:serviceaccount:nats:nats-auth-callout")}
+
+	health := NewHealthServer(reviewer, nil, slog.New(slog.DiscardHandler))
+	health.tokenPath = tokenFile
+	health.MarkSubscribed()
+
+	rec := httptest.NewRecorder()
+	health.handleReady(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/readyz", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("/readyz = %d (%s), want 200", rec.Code, rec.Body.String())
+	}
+
+	if reviewer.gotToken != "self-token" {
+		t.Errorf("reviewed token = %q, want the pod's own token", reviewer.gotToken)
+	}
+
+	if reviewer.gotAudiences != nil {
+		t.Errorf("self-review audiences = %v, want none (the token carries the API server's audience only)", reviewer.gotAudiences)
+	}
+
+	if !reviewer.hadDeadline {
+		t.Error("self-review ran without a deadline; a hung apiserver would hang the probe")
+	}
+}
+
+// A self-review the API server answers but does not authenticate (an
+// expired or foreign token) is a 503 with the reason, not a 200.
+func TestHealthReadyzFailsWhenNotAuthenticated(t *testing.T) {
+	tokenFile := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(tokenFile, []byte("self-token"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	reviewer := &fakeReviewer{status: &authv1.TokenReviewStatus{Authenticated: false, Error: "token has expired"}}
+
+	health := NewHealthServer(reviewer, nil, slog.New(slog.DiscardHandler))
+	health.tokenPath = tokenFile
+	health.MarkSubscribed()
+
+	rec := httptest.NewRecorder()
+	health.handleReady(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/readyz", nil))
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("/readyz = %d, want 503 when the self-review is not authenticated", rec.Code)
+	}
+
+	if !strings.Contains(rec.Body.String(), "token has expired") {
+		t.Errorf("/readyz body = %q, want the TokenReview reason", rec.Body.String())
 	}
 }
 

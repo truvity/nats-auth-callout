@@ -1,6 +1,6 @@
 # nats-auth-callout
 
-NATS auth-callout responder (INF-387, capability containers). The shared NATS broker delegates
+NATS auth-callout responder. The shared NATS broker delegates
 client authentication here (config-mode `auth_callout`): clients present their Kubernetes
 ServiceAccount token as the NATS auth token, the service validates it via TokenReview and answers
 with a signed user JWT that places the client into the right NATS account — per-project isolation
@@ -35,14 +35,15 @@ the service signs it with the seed — one secret covers response signing _and_ 
 ## Mapping rule (v2)
 
 Uniform across tenancy tiers — every tenant namespace maps to a DEDICATED account of the same
-name: namespace listed in `NATS_PROJECT_ACCOUNTS` → account of the same name; `employee-{slug}`
-(non-empty slug) or exactly `ci` → account of the same name; anything else is rejected (including
-a bare `employee-` prefix). The broker's accounts block and the gitops tenants-stack Account CRs
-render per namespace from the same cfg, so all three layers follow one rule. Issued users get
-allow-all pub/sub inside their account, expiry = SA-token expiry capped at 1h. One structured log
-line per decision; tokens are never logged.
+name: a namespace listed in `NATS_PROJECT_ACCOUNTS`, `emp-<slug>` (non-empty slug),
+`ci-<org>-<repo>` (both parts non-empty; they may themselves contain dashes) or exactly `ci`
+(legacy, transitional) → account of the same name; anything else is rejected (including a bare
+`emp-` prefix and a `ci-` namespace with only one part). The broker's accounts block and any
+per-namespace account resource a deploy tool keeps render from the same list, so every layer
+follows one rule. Issued users get allow-all pub/sub inside their account, expiry = SA-token
+expiry capped at 1h. One structured log line per decision; tokens are never logged.
 
-## Resilience (INF-401 incident hardening)
+## Resilience
 
 - **TokenReview retry**: each review attempt is short (800ms) and retried
   twice with 150ms backoff — transient apiserver blips don't become client
@@ -53,7 +54,10 @@ line per decision; tokens are never logged.
   skip the apiserver, and already-authenticated clients ride short
   TokenReview outages.
 - **`/readyz`**: performs a REAL TokenReview of the pod's own SA token
-  (verdict cached 5s) and checks the broker connection. A pod that cannot
-  authorize clients goes unready — it drops from the queue group and
-  rollouts halt with old pods serving — instead of denying everything while
-  looking Running (the INF-401 incident class). `/healthz` is liveness only.
+  (verdict cached 5s) and checks the broker connection. The self-review
+  passes no audience list, so the token is accepted as the kubelet issued
+  it (with the API server's audience) and `NATS_TOKEN_AUDIENCE` does not
+  need to name the API server for readiness. A pod that cannot authorize
+  clients goes unready — it drops from the queue group and rollouts halt
+  with old pods serving — instead of denying everything while looking
+  Running. `/healthz` is liveness only.

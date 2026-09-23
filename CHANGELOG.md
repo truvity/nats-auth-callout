@@ -5,6 +5,17 @@ heading here is a patch cut automatically for dependency bumps alone; its
 GitHub Release lists them. The chart and the image are released together
 at every version.
 
+## v1.0.8
+
+- **`/readyz` reviews the pod's own token without an audience list.** The
+  kubelet projects that token with the API server's audience alone, so
+  the self-review no longer needs `tokenAudiences` to name the API
+  server: the default `[nats]` gives a `Ready` responder. Clients are
+  still reviewed against `tokenAudiences` only. An install that listed
+  the API server's audience for readiness may drop it; keep it where
+  long-lived controller-minted token Secrets must authenticate. The
+  library constructor `NewHealthServer` loses its audiences parameter.
+
 ## v1.0.1
 
 - **`values.schema.json` admits the chart's own `natsURL: ""`

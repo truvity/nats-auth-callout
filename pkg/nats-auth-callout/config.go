@@ -1,5 +1,4 @@
-// Package natsauthcallout implements a NATS auth-callout responder
-// (INF-387, capability containers).
+// Package natsauthcallout implements a NATS auth-callout responder.
 //
 // A shared NATS broker delegates client authentication to this service
 // (config-mode auth_callout). Connecting clients present their Kubernetes
@@ -11,7 +10,9 @@
 // Mapping rule (v2 — uniform across tenancy tiers, every tenant
 // namespace gets a DEDICATED account of the same name):
 //   - namespace listed in NATS_PROJECT_ACCOUNTS       → account = namespace
-//   - namespace "employee-{slug}" or exactly "ci"     → account = namespace
+//   - namespace "emp-<slug>" (non-empty slug)          → account = namespace
+//   - namespace "ci-<org>-<repo>" (both non-empty)     → account = namespace
+//   - namespace exactly "ci" (legacy, transitional)    → account = namespace
 //   - anything else                                    → rejected
 package natsauthcallout
 

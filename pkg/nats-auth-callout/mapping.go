@@ -11,15 +11,15 @@ const (
 	// ServiceAccount identities.
 	serviceAccountPrefix = "system:serviceaccount:"
 	// employeeNamespacePrefix marks per-employee sandbox namespaces
-	// (emp-{slug} — the roster's k8s abbreviation; the gitops tenants
-	// stack renders both the namespace and its NATS account under this
-	// name).
+	// (emp-{slug}; whatever renders the namespace renders its NATS
+	// account under the same name).
 	employeeNamespacePrefix = "emp-"
 	// ciNamespacePrefix marks CI tenant namespaces (ci-{org}-{repo},
 	// one static namespace per CI-enabled repository).
 	ciNamespacePrefix = "ci-"
 	// legacyCINamespace is the pre-per-repo single CI namespace. Kept
-	// until the layer-1 rows replace it, then deleted with this comment.
+	// until every CI tenant has a ci-{org}-{repo} namespace of its own,
+	// then deleted with this comment.
 	legacyCINamespace = "ci"
 )
 
@@ -41,8 +41,8 @@ func ParseServiceAccount(username string) (namespace, name string, err error) {
 
 // AccountForNamespace applies the v2 mapping rule — uniform across
 // tenancy tiers, every tenant namespace maps to a DEDICATED account of
-// the same name (broker accounts + tenants-stack Account CRs are
-// rendered per namespace from the same cfg):
+// the same name (the broker's accounts block, and any per-namespace
+// account resource a deploy tool keeps, are rendered from the same list):
 //   - namespace in projectAccounts                → account = namespace
 //   - namespace "emp-{slug}" (non-empty)          → account = namespace
 //   - namespace "ci-{org}-{repo}" (non-empty)     → account = namespace

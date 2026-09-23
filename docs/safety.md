@@ -200,19 +200,21 @@ the responder stays `Ready`, and every other client works. Controller-
 minted long-lived token Secrets carry the API server's URL as their
 audience, not `nats`; see [reference.md](reference.md#audiences).
 
-### `tokenAudiences` needs the API server's audience for `/readyz`
+### `/readyz` does not need the API server's audience
 
-`/readyz` reviews the pod's own ServiceAccount token with the configured
-audiences, and the kubelet projects that token with the API server's
-own audience (`https://kubernetes.default.svc` on most distributions)
-and no other. TokenReview intersects the token's audiences with the
-requested ones, so with the default `[nats]` alone the self-review is
-refused (`self tokenreview not authenticated: … token audiences … is
-invalid for the target audiences ["nats"]`) and the responder is never
-`Ready`, while it would authorize clients correctly. Add the API
-server's audience to `tokenAudiences`; the README's worked example
-does. Nothing else in the chain fails, so this one is found by reading
-the probe's 503 body.
+The kubelet projects the pod's own ServiceAccount token with the API
+server's own audience (`https://kubernetes.default.svc` on most
+distributions) and no other, and TokenReview accepts a token only for
+an audience it was projected with. So the self-review submits that
+token with no audience list, which Kubernetes reads as "the API
+server's own audiences": the token is accepted as issued, and the
+default `tokenAudiences: [nats]` gives a `Ready` responder. A
+self-review that asked for the clients' audiences would be refused
+(`token audiences … is invalid for the target audiences ["nats"]`)
+while clients authorized correctly; that is why the probe does not.
+The empty-list rule that is a hazard for clients (above) is the right
+behaviour here, and only here: a client token is always reviewed
+against the configured list.
 
 ### `/readyz` needs the pod's own token and the delegator grant
 

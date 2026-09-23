@@ -168,25 +168,28 @@ volumes:
             path: token
 ```
 
-**`tokenAudiences` must also carry the API server's own audience** (the
-first of its `--api-audiences`, by default its issuer URL,
-`https://kubernetes.default.svc` on most distributions). The
-responder's own pod token, which `/readyz` reviews, is projected by the
-kubelet with that audience and no other, and TokenReview accepts a
-token only for an audience it was projected with; with `[nats]` alone
-the self-review is refused and the responder is never `Ready`. The
-same entry is what lets a long-lived token Secret minted by a
-controller authenticate: those carry the API server URL as their
-audience, not `kubernetes.default.svc`, so a cluster whose issuer is
-its API server URL lists that. See
-[safety.md](safety.md#tokenaudiences-needs-the-api-servers-audience-for-readyz).
+The list is for clients only. The responder's own pod token, which
+`/readyz` reviews, is projected by the kubelet with the API server's
+own audience (the first of its `--api-audiences`, by default its
+issuer URL, `https://kubernetes.default.svc` on most distributions)
+and no other, so the self-review submits it with **no** audience list:
+Kubernetes then checks the token against the API server's own
+audiences, which is how it was issued. `tokenAudiences: [nats]` alone
+gives a `Ready` responder. A client token is never reviewed that way.
+
+**Add the API server's audience only for long-lived token Secrets
+minted by a controller.** Those carry the API server's own audience,
+not `nats`, and that is the cluster's issuer URL, whichever it is: a
+cluster whose issuer is its API server URL lists that URL, not
+`kubernetes.default.svc`. See
+[safety.md](safety.md#readyz-does-not-need-the-api-servers-audience).
 
 ### Health
 
 | Endpoint | Answers 200 when |
 | --- | --- |
 | `/healthz` | the process is up. Liveness only |
-| `/readyz` | the auth-callout subscription is confirmed by the broker (a flush after subscribing), the broker connection is `CONNECTED`, and a TokenReview of the pod's own ServiceAccount token succeeds. The self-review is cached for 5 s and bounded to 3 s. Otherwise 503 with the reason |
+| `/readyz` | the auth-callout subscription is confirmed by the broker (a flush after subscribing), the broker connection is `CONNECTED`, and a TokenReview of the pod's own ServiceAccount token succeeds. The self-review passes no audience list (the token carries the API server's audience, not the clients'), is cached for 5 s and bounded to 3 s. Otherwise 503 with the reason |
 
 An initial connection failure exits the process (the kubelet restarts
 it); once connected, the client reconnects indefinitely. On `SIGINT` or
